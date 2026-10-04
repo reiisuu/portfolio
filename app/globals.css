@@ -1,26 +1,70 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #150517;
+  --foreground: #ffffff;
+  --surface: rgba(255, 255, 255, 0.06);
+  --surface-strong: rgba(255, 255, 255, 0.07);
+  --line: rgba(255, 255, 255, 0.15);
+  --muted: rgba(255, 255, 255, 0.6);
+  --accent: #cf67e3;
+}
+
+html[data-theme="light"] {
+  --background: #eee8f0;
+  --foreground: #241126;
+  --surface: rgba(36, 17, 38, 0.045);
+  --surface-strong: rgba(36, 17, 38, 0.06);
+  --line: rgba(36, 17, 38, 0.14);
+  --muted: rgba(36, 17, 38, 0.6);
+  --accent: #8a3e9d;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-accent: var(--accent);
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-nothing-display);
+  --font-mono: var(--font-space-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: var(--background);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), sans-serif;
+  background-image: radial-gradient(circle at 15% 10%, rgba(221, 114, 253, 0.12), transparent 28rem);
+  background-repeat: no-repeat;
+  overflow-x: hidden;
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+img,
+svg,
+canvas {
+  max-width: 100%;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (max-width: 639px) {
+  .portfolio-nav-scroll {
+    scrollbar-width: none;
+  }
+
+  .portfolio-nav-scroll::-webkit-scrollbar {
+    display: none;
+  }
 }

@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reisu — Tech Stack Cube</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#000000; --text:#f5f5f5; --sub:#8a8a8e; --accent:#ff3b30;
+    --glass-bg: rgba(255,255,255,0.06); --glass-border: rgba(255,255,255,0.16);
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){ --bg:#f2f2f2; --text:#0a0a0a; --sub:#6b6b70;
+      --glass-bg: rgba(255,255,255,0.5); --glass-border: rgba(0,0,0,0.1); }
+  }
+  :root[data-theme="light"]{ --bg:#f2f2f2; --text:#0a0a0a; --sub:#6b6b70;
+    --glass-bg: rgba(255,255,255,0.5); --glass-border: rgba(0,0,0,0.1); }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);
+    font-family:'Space Mono',ui-monospace,Menlo,monospace;overflow:hidden;
+    background-image:radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-size:22px 22px;}
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]) body{ background-image:radial-gradient(rgba(0,0,0,0.06) 1px, transparent 1px); }
+  }
+  .glass{ background:var(--glass-bg); border:1px solid var(--glass-border);
+    -webkit-backdrop-filter:blur(18px) saturate(150%); backdrop-filter:blur(18px) saturate(150%);
+    box-shadow:0 10px 30px rgba(0,0,0,0.35); }
+  #hud{position:fixed;top:calc(env(safe-area-inset-top,0px) + 16px);left:50%;transform:translateX(-50%);
+    z-index:5;text-align:center;padding:12px 28px;border-radius:18px;}
+  #hud h1{margin:0;font-size:clamp(15px,3vw,18px);font-weight:700;letter-spacing:3px;text-transform:uppercase;}
+  #hud h1 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-right:9px;vertical-align:middle;}
+  #hud p{margin:6px 0 0;color:var(--sub);font-size:10.5px;letter-spacing:1px;text-transform:uppercase;}
+  #bar{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);left:0;right:0;
+    display:flex;gap:12px;justify-content:center;z-index:5;}
+  #bar button{border-radius:999px;padding:10px 20px;font-family:inherit;
+    font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+    color:var(--text);cursor:pointer;}
+  #bar button:active{transform:scale(0.96);}
+  #bar button.primary{border-color:var(--accent);color:var(--accent);}
+  #tip{position:fixed;pointer-events:none;z-index:6;padding:7px 14px;border-radius:999px;
+    font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+    opacity:0;transition:opacity .12s ease;white-space:nowrap;}
+  #tip .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:8px;vertical-align:middle;}
+  canvas{display:block;touch-action:none;}
+</style>
+</head>
+<body>
+<div id="hud" class="glass"><h1><span class="dot"></span>Reisu</h1><p>Drag sticker to turn · hover to identify</p></div>
+<div id="bar">
+  <button class="glass" id="shuffleBtn">Shuffle</button>
+  <button class="glass primary" id="resetBtn">Reset</button>
+</div>
+<div id="tip" class="glass"><span class="dot"></span><span id="tipText"></span></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 100);
+  var zoom = 6.4; camera.position.set(0,0,zoom);
+
+  var renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setSize(innerWidth, innerHeight);
+  document.body.appendChild(renderer.domElement);
+  var el = renderer.domElement;
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+  var dl = new THREE.DirectionalLight(0xffffff, 0.8); dl.position.set(4,6,5); scene.add(dl);
+  var dl2 = new THREE.DirectionalLight(0xffffff, 0.4); dl2.position.set(-4,-4,-4); scene.add(dl2);
+
+  // ---- stylized generic tech icons (not exact brand marks) ----
+  function iconAtom(ctx,cx,cy,s,col){
+    ctx.strokeStyle=col; ctx.lineWidth=s*0.05; ctx.fillStyle=col;
+    for(var i=0;i<3;i++){ ctx.save(); ctx.translate(cx,cy); ctx.rotate(i*Math.PI/3);
+      ctx.beginPath(); ctx.ellipse(0,0,s*0.55,s*0.22,0,0,Math.PI*2); ctx.stroke(); ctx.restore(); }
+    ctx.beginPath(); ctx.arc(cx,cy,s*0.09,0,Math.PI*2); ctx.fill();
+  }
+  function iconHex(ctx,cx,cy,s,col){
+    ctx.strokeStyle=col; ctx.lineWidth=s*0.07; ctx.beginPath();
+    for(var i=0;i<6;i++){ var a=Math.PI/3*i-Math.PI/2, x=cx+Math.cos(a)*s*0.55, y=cy+Math.sin(a)*s*0.55;
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+    ctx.closePath(); ctx.stroke();
+  }
+  function iconLeaf(ctx,cx,cy,s,col){
+    ctx.fillStyle=col; ctx.beginPath();
+    ctx.moveTo(cx,cy-s*0.6);
+    ctx.quadraticCurveTo(cx+s*0.45,cy-s*0.1,cx,cy+s*0.6);
+    ctx.quadraticCurveTo(cx-s*0.45,cy-s*0.1,cx,cy-s*0.6);
+    ctx.fill();
+  }
+  function iconBlobs(ctx,cx,cy,s,col){
+    ctx.fillStyle=col;
+    ctx.beginPath(); ctx.arc(cx-s*0.2,cy-s*0.16,s*0.34,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx+s*0.2,cy+s*0.16,s*0.34,0,Math.PI*2); ctx.fill();
+  }
+  function iconChevrons(ctx,cx,cy,s,col){
+    ctx.strokeStyle=col; ctx.lineWidth=s*0.1; ctx.lineJoin='round'; ctx.lineCap='round';
+    ctx.beginPath();
+    ctx.moveTo(cx-s*0.35,cy+s*0.42); ctx.lineTo(cx-s*0.35,cy-s*0.42);
+    ctx.lineTo(cx+s*0.35,cy+s*0.42); ctx.lineTo(cx+s*0.35,cy-s*0.42);
+    ctx.stroke();
+  }
+  function iconArrow(ctx,cx,cy,s,col){
+    ctx.fillStyle=col; ctx.beginPath();
+    ctx.moveTo(cx,cy-s*0.55); ctx.lineTo(cx+s*0.42,cy+s*0.3); ctx.lineTo(cx-s*0.42,cy+s*0.3); ctx.closePath(); ctx.fill();
+  }
+  function iconBranch(ctx,cx,cy,s,col){
+    ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=s*0.07;
+    ctx.beginPath(); ctx.moveTo(cx-s*0.3,cy-s*0.45); ctx.lineTo(cx-s*0.3,cy+s*0.45); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx-s*0.3,cy); ctx.quadraticCurveTo(cx,cy,cx+s*0.3,cy-s*0.3); ctx.stroke();
+    [[cx-s*0.3,cy-s*0.45],[cx-s*0.3,cy+s*0.45],[cx+s*0.3,cy-s*0.3]].forEach(function(p){
+      ctx.beginPath(); ctx.arc(p[0],p[1],s*0.09,0,Math.PI*2); ctx.fill(); });
+  }
+  function iconWave(ctx,cx,cy,s,col){
+    ctx.strokeStyle=col; ctx.lineWidth=s*0.09; ctx.lineCap='round';
+    for(var row=-1;row<=1;row+=2){
+      ctx.beginPath();
+      ctx.moveTo(cx-s*0.5, cy+row*s*0.12);
+      ctx.bezierCurveTo(cx-s*0.2,cy+row*s*0.12-s*0.22, cx+0,cy+row*s*0.12+s*0.22, cx+s*0.5,cy+row*s*0.12);
+      ctx.stroke();
+    }
+  }
+  function iconBraces(ctx,cx,cy,s,col){
+    ctx.fillStyle=col; ctx.font='700 '+Math.round(s*1.15)+'px monospace';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('{ }', cx, cy+s*0.05);
+  }
+  function iconBars(ctx,cx,cy,s,col){
+    ctx.fillStyle=col;
+    var w=s*0.22, gap=s*0.12, hs=[0.4,0.7,1.0];
+    for(var i=0;i<3;i++){ var h=s*hs[i]; var x=cx-s*0.5+i*(w+gap); ctx.fillRect(x, cy+s*0.5-h, w, h); }
+  }
+  function iconGrid(ctx,cx,cy,s,col){
+    ctx.strokeStyle=col; ctx.lineWidth=s*0.06;
+    var r=s*0.5;
+    ctx.strokeRect(cx-r,cy-r,r*2,r*2);
+    ctx.beginPath(); ctx.moveTo(cx-r,cy); ctx.lineTo(cx+r,cy); ctx.moveTo(cx,cy-r); ctx.lineTo(cx,cy+r); ctx.stroke();
+  }
+  function iconCloud(ctx,cx,cy,s,col){
+    ctx.fillStyle=col; ctx.beginPath();
+    ctx.arc(cx-s*0.22,cy+s*0.05,s*0.28,0,Math.PI*2);
+    ctx.arc(cx+s*0.12,cy-s*0.05,s*0.32,0,Math.PI*2);
+    ctx.arc(cx+s*0.38,cy+s*0.08,s*0.22,0,Math.PI*2);
+    ctx.rect(cx-s*0.45,cy+s*0.05,s*0.95,s*0.28);
+    ctx.fill();
+  }
+
+  var TECHS = [
+    {name:'React',        icon:iconAtom,     color:'#61dbfb'},
+    {name:'Node.js',      icon:iconHex,      color:'#3c873a'},
+    {name:'MongoDB',      icon:iconLeaf,     color:'#47a248'},
+    {name:'Python',       icon:iconBlobs,    color:'#3776ab'},
+    {name:'Next.js',      icon:iconChevrons, color:'#e6e6e6'},
+    {name:'Expo',         icon:iconArrow,    color:'#4630eb'},
+    {name:'Git',          icon:iconBranch,   color:'#f05033'},
+    {name:'Tailwind CSS', icon:iconWave,     color:'#38bdf8'},
+    {name:'JavaScript',   icon:iconBraces,   color:'#f7df1e'},
+    {name:'Pandas',       icon:iconBars,     color:'#743fdb'},
+    {name:'SQL',          icon:iconGrid,     color:'#336791'},
+    {name:'Vercel',       icon:iconCloud,    color:'#e6e6e6'}
+  ];
+
+  function pickTextColor(hex){
+    var n=parseInt(hex.slice(1),16), r=(n>>16)&255,g=(n>>8)&255,b=n&255;
+    return (0.299*r+0.587*g+0.114*b)/255 > 0.6 ? '#0a0a0a' : '#ffffff';
+  }
+  function roundRect(ctx,x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  // default state: frosted glass panel, monochrome, Nothing-style red accent dot
+  function makeGlassSticker(iconFn){
+    var size=256, c=document.createElement('canvas'); c.width=c.height=size;
+    var ctx=c.getContext('2d');
+    ctx.fillStyle='#050505'; ctx.fillRect(0,0,size,size);
+    var m=size*0.06, w=size-2*m, h=size-2*m, r=size*0.11;
+    var grad=ctx.createLinearGradient(m,m,m+w,m+h);
+    grad.addColorStop(0,'rgba(255,255,255,0.16)');
+    grad.addColorStop(0.5,'rgba(255,255,255,0.05)');
+    grad.addColorStop(1,'rgba(255,255,255,0.12)');
+    ctx.fillStyle=grad; roundRect(ctx,m,m,w,h,r); ctx.fill();
+    ctx.lineWidth=size*0.012; ctx.strokeStyle='rgba(255,255,255,0.4)';
+    roundRect(ctx,m,m,w,h,r); ctx.stroke();
+    ctx.fillStyle='#ff3b30';
+    ctx.beginPath(); ctx.arc(size-m-size*0.07, m+size*0.07, size*0.02, 0, Math.PI*2); ctx.fill();
+    iconFn(ctx,size/2,size/2,size*0.32,'#f2f2f2');
+    return new THREE.CanvasTexture(c);
+  }
+  // hover state: solid native brand color
+  function makeBrandSticker(tech){
+    var size=256, c=document.createElement('canvas'); c.width=c.height=size;
+    var ctx=c.getContext('2d');
+    ctx.fillStyle='#050505'; ctx.fillRect(0,0,size,size);
+    var m=size*0.06, w=size-2*m, h=size-2*m, r=size*0.11;
+    ctx.fillStyle=tech.color; roundRect(ctx,m,m,w,h,r); ctx.fill();
+    tech.icon(ctx,size/2,size/2,size*0.34,pickTextColor(tech.color));
+    return new THREE.CanvasTexture(c);
+  }
+
+  var FACE_SEED = { top:0, bottom:2, front:4, back:6, right:8, left:10 };
+  var BRAND_TEX = TECHS.map(function(t){ return makeBrandSticker(t); });
+  function idxFor(a,b){ return (a+1)*3+(b+1); }
+  function stickerMat(face,a,b){
+    var idx = idxFor(a,b);
+    var techIndex = (FACE_SEED[face]+idx) % TECHS.length;
+    var tech = TECHS[techIndex];
+    var normalTex = makeGlassSticker(tech.icon);
+    var mat = new THREE.MeshPhysicalMaterial({map:normalTex, roughness:0.3, metalness:0.05, clearcoat:0.4, clearcoatRoughness:0.4});
+    mat.userData = { normalTex:normalTex, brandTex:BRAND_TEX[techIndex], name:tech.name, color:tech.color };
+    return mat;
+  }
+  var plastic = new THREE.MeshStandardMaterial({color:0x0a0a0a, roughness:0.8});
+
+  var rubikGroup = new THREE.Group(); scene.add(rubikGroup);
+  var SIZE=0.92, coords=[-1,0,1];
+  coords.forEach(function(x){ coords.forEach(function(y){ coords.forEach(function(z){
+    var mats=[
+      x===1? stickerMat('right',y,z):  plastic,
+      x===-1?stickerMat('left',y,z):   plastic,
+      y===1? stickerMat('top',x,z):    plastic,
+      y===-1?stickerMat('bottom',x,z): plastic,
+      z===1? stickerMat('front',x,y):  plastic,
+      z===-1?stickerMat('back',x,y):   plastic
+    ];
+    var mesh = new THREE.Mesh(new THREE.BoxGeometry(SIZE,SIZE,SIZE), mats);
+    mesh.position.set(x,y,z);
+    rubikGroup.add(mesh);
+  }); }); });
+  rubikGroup.rotation.set(0.5,-0.6,0);
+
+  // ---- layer rotation ----
+  var isAnimating=false;
+  function snapQuat(m){
+    var e=new THREE.Euler().setFromQuaternion(m.quaternion,'XYZ'), h=Math.PI/2;
+    e.x=Math.round(e.x/h)*h; e.y=Math.round(e.y/h)*h; e.z=Math.round(e.z/h)*h;
+    m.quaternion.setFromEuler(e);
+  }
+  function rotateLayer(axis, layerVal, dir, duration, cb){
+    duration = duration || 260; isAnimating = true;
+    var group = new THREE.Group(); rubikGroup.add(group);
+    var affected = rubikGroup.children.filter(function(m){ return m!==group && Math.round(m.position[axis])===layerVal; });
+    affected.forEach(function(m){ group.add(m); });
+    var axisVec = new THREE.Vector3(axis==='x'?1:0, axis==='y'?1:0, axis==='z'?1:0);
+    var target = dir*Math.PI/2, t0=null;
+    function step(ts){
+      if(!t0) t0=ts;
+      var t=Math.min(1,(ts-t0)/duration);
+      var e=t<0.5?2*t*t:-1+(4-2*t)*t;
+      group.quaternion.setFromAxisAngle(axisVec, e*target);
+      if(t<1){ requestAnimationFrame(step); return; }
+      group.updateMatrixWorld(true);
+      affected.forEach(function(m){ rubikGroup.attach(m); });
+      rubikGroup.remove(group);
+      affected.forEach(function(m){
+        m.position.set(Math.round(m.position.x),Math.round(m.position.y),Math.round(m.position.z));
+        snapQuat(m);
+      });
+      isAnimating=false; if(cb) cb();
+    }
+    requestAnimationFrame(step);
+  }
+
+  // ---- interaction ----
+  var raycaster=new THREE.Raycaster(), pointer=new THREE.Vector2();
+  var dragMode=null, orbitPrev={x:0,y:0}, cubieDrag=null, interacted=false;
+  var tip = document.getElementById('tip'), tipText = document.getElementById('tipText');
+  var hoveredMat = null;
+  function getPointer(e){ var r=el.getBoundingClientRect(); pointer.x=((e.clientX-r.left)/r.width)*2-1; pointer.y=-((e.clientY-r.top)/r.height)*2+1; }
+
+  function clearHover(){
+    if(hoveredMat){ hoveredMat.map = hoveredMat.userData.normalTex; hoveredMat.needsUpdate=true; hoveredMat=null; }
+    tip.style.opacity = 0;
+  }
+  function updateHover(e){
+    if(dragMode || isAnimating){ clearHover(); return; }
+    getPointer(e);
+    raycaster.setFromCamera(pointer,camera);
+    var hits = raycaster.intersectObjects(rubikGroup.children);
+    if(hits.length){
+      var hit=hits[0];
+      var mat = hit.object.material[hit.face.materialIndex];
+      if(mat && mat.userData && mat.userData.brandTex){
+        if(hoveredMat!==mat){
+          clearHover(); hoveredMat=mat;
+          mat.map = mat.userData.brandTex; mat.needsUpdate=true;
+        }
+        tipText.textContent = mat.userData.name;
+        tip.querySelector('.dot').style.background = mat.userData.color;
+        tip.style.left = (e.clientX+16)+'px';
+        tip.style.top = (e.clientY+16)+'px';
+        tip.style.opacity = 1;
+        return;
+      }
+    }
+    clearHover();
+  }
+
+  function onDown(e){
+    if(isAnimating) return;
+    getPointer(e);
+    raycaster.setFromCamera(pointer,camera);
+    var hits = raycaster.intersectObjects(rubikGroup.children);
+    if(hits.length){
+      var hit=hits[0];
+      var normalWorld = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
+      var invQ = rubikGroup.quaternion.clone().invert();
+      var normalLocal = normalWorld.clone().applyQuaternion(invQ);
+      normalLocal.set(Math.round(normalLocal.x),Math.round(normalLocal.y),Math.round(normalLocal.z));
+      cubieDrag = { object:hit.object, normalLocal:normalLocal, startPoint:hit.point.clone(),
+        plane:new THREE.Plane().setFromNormalAndCoplanarPoint(normalWorld, hit.point) };
+      dragMode='cubie';
+    } else { dragMode='orbit'; orbitPrev={x:e.clientX,y:e.clientY}; }
+    clearHover();
+  }
+  function onMove(e){
+    if(dragMode==='orbit'){
+      var dx=e.clientX-orbitPrev.x, dy=e.clientY-orbitPrev.y;
+      rubikGroup.rotation.y += dx*0.008; rubikGroup.rotation.x += dy*0.008;
+      orbitPrev={x:e.clientX,y:e.clientY}; interacted=true;
+    }
+  }
+  function onUp(e){
+    if(dragMode==='cubie' && cubieDrag){
+      getPointer(e); raycaster.setFromCamera(pointer,camera);
+      var pt=new THREE.Vector3();
+      if(raycaster.ray.intersectPlane(cubieDrag.plane, pt)){
+        var dragWorld = pt.clone().sub(cubieDrag.startPoint);
+        if(dragWorld.length() > 0.14){
+          var invQ = rubikGroup.quaternion.clone().invert();
+          var dragLocal = dragWorld.clone().applyQuaternion(invQ);
+          var raw = cubieDrag.normalLocal.clone().cross(dragLocal);
+          var ax='x', mv=Math.abs(raw.x);
+          if(Math.abs(raw.y)>mv){ax='y';mv=Math.abs(raw.y);}
+          if(Math.abs(raw.z)>mv){ax='z';mv=Math.abs(raw.z);}
+          var sign = raw[ax]>0?1:-1;
+          var layerVal = Math.round(cubieDrag.object.position[ax]);
+          interacted=true;
+          rotateLayer(ax, layerVal, sign);
+        }
+      }
+    }
+    dragMode=null; cubieDrag=null;
+  }
+  el.addEventListener('mousedown', onDown);
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mousemove', updateHover);
+  window.addEventListener('mouseup', onUp);
+  el.addEventListener('mouseleave', clearHover);
+  el.addEventListener('touchstart', function(e){ onDown(e.touches[0]); clearHover(); }, {passive:true});
+  el.addEventListener('touchmove', function(e){ onMove(e.touches[0]); }, {passive:true});
+  el.addEventListener('touchend', function(e){ onUp(e.changedTouches[0]); });
+  el.addEventListener('wheel', function(e){ zoom=Math.min(10,Math.max(4.2,zoom+e.deltaY*0.003)); }, {passive:true});
+
+  function shuffle(n){
+    if(isAnimating) return;
+    clearHover();
+    n = n || 16;
+    var axes=['x','y','z'], layers=[-1,0,1];
+    var seq=[]; for(var i=0;i<n;i++){ seq.push({a:axes[Math.floor(Math.random()*3)], l:layers[Math.floor(Math.random()*3)], d:Math.random()<0.5?1:-1}); }
+    (function next(i){ if(i>=seq.length) return; rotateLayer(seq[i].a, seq[i].l, seq[i].d, 150, function(){ next(i+1); }); })(0);
+  }
+  document.getElementById('shuffleBtn').addEventListener('click', function(){ shuffle(16); });
+  document.getElementById('resetBtn').addEventListener('click', function(){ location.reload(); });
+
+  function animate(){
+    requestAnimationFrame(animate);
+    if(dragMode==null && !interacted){ rubikGroup.rotation.y += 0.004; }
+    camera.position.z += (zoom - camera.position.z)*0.08;
+    renderer.render(scene, camera);
+  }
+  animate();
+  window.addEventListener('resize', function(){
+    camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
+  });
+})();
+</script>
+</body>
+</html>
